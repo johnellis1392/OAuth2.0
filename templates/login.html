@@ -1,0 +1,81 @@
+<html>
+  <head>
+	<script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+	<script src="//apis.google.com/js/platform.js?onload=start"></script>
+  </head>
+
+  <body>
+
+	<!-- Create container for login button -->
+	<div id="signinButton">
+
+	  <!-- Add google sign-in button. This integrates with -->
+	  <!-- Google's auth api using the included scripts to -->
+	  <!-- give us the sign-in functionality. -->
+	  <span class="g-signin"
+		  data-scope="openid email"
+		  data-clientid="994999506805-9gmdqqgjbps4rrbopf2tfmmj2gdr0liu.apps.googleusercontent.com"
+		  data-redirecturi="postmessage"
+		  data-accesstype="offline"
+		  data-cookiepolicy="single_host_origin"
+		  data-callback="signInCallback"
+		  data-approvalprompt="force">
+	  </span>
+	</div>
+
+	<div id="result"></div>
+
+	<script>
+	  function signInCallback(authResult) {
+		console.log('Callback called: ', authResult)
+
+		if (authResult['code']) {
+		  console.log('Auth code: ', authResult['code'])
+
+		  // Auth was successful; get one-time-use code
+		  $('#signinButton').attr('style', 'display: none')
+
+		  // Post google sign-in credentials to server.
+		  // This call also sends the state token we
+		  // supply from the server to athenticate
+		  // the user's session.
+		  //
+		  // 'processData: false' tells jquery to not process the result into a string.
+		  // 'contentType: octet-stream' says we're sending an arbitrary stream of data.
+		  // 'data: authResult['code']' Send google's one-time-use code to server.
+		  $.ajax({
+			type: 'POST',
+			url: '/gconnect?state={{STATE}}',
+			processData: false,
+			contentType: 'application/octet-stream; charset=utf-8',
+			data: authResult['code'],
+			success: function(result) {
+
+			  // debugger
+			  console.log("Request returned: ", result)
+			  if (result) {
+				$('#result').html('Login Successful!<br/>' + result + '<br/>Redirecting...')
+
+				// Wait to tell user login was successful
+				setTimeout(function() {
+				  // Redirect to main page
+				  window.location.href = '/restaurant'
+				}, 4000)
+
+			  } else if (authResult['error']) {
+				// An error occurred
+				console.log('An error occurred while processing the request: ', authResult['error'])
+			  } else {
+				// An unknown error occurred
+				$('#result').html('Failed to make a server-side call; check your configuration and console')
+			  }
+
+			},
+		  })
+		}
+	  }
+	</script>
+
+  </body>
+</html>
+

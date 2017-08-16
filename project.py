@@ -6,12 +6,134 @@ from sqlalchemy.orm import sessionmaker
 from database_setup import Base, Restaurant, MenuItem
 
 
+# Import flask session setup
+from flask import session as login_session
+import random, string
+
+from oauth2client.client import flow_from_clientsecrets
+from oauth2client.client import FlowExchangeError
+import httplib2
+import json
+from flask import make_response
+import requests
+
+
+# Get client secrets for server configuration.
+# NOTE: You get this json file from google cloud
+# by going to console.developers.google.com/apis.credentials
+# and downloading the client id that goes with
+# your app.
+CLIENT_ID = json.loads(open('client_secrets.json', 'r').read())['web']['client_id']
+
+
 #Connect to Database and create database session
 engine = create_engine('sqlite:///restaurantmenu.db')
 Base.metadata.bind = engine
 
 DBSession = sessionmaker(bind=engine)
 session = DBSession()
+
+# @app.route('/test')
+# def testJSON():
+#     return jsonify({'message': 'Hello, World!'})
+
+
+
+
+
+# Login route
+@app.route('/login')
+def showLogin():
+    # Generate random state token
+    state = ''.join(random.choice(string.ascii_uppercase + string.digits) for x in xrange(32))
+
+    # Store state token
+    login_session['state'] = state
+
+    # return "The current session state is %s" % login_session['state']
+    return render_template('login.html', STATE=state)
+
+
+# Create a json error response
+def __json_response(message, status):
+    response = make_response(json.dumps(message), status)
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+
+# Google account connection endpoint
+@app.route('/gconnect', methods=['POST'])
+def gconnect():
+    # Verify state token
+    print " *** Entering callback..."
+    if request.args.get('state') != login_session['state']:
+        return __json_response('Invalid State Token', 401)
+
+    code = request.data
+    try:
+        oauth_flow = flow_from_clientsecrets('client_secrets.json', scope = '')
+        oauth_flow.redirect_uri = 'postmessage'
+        credentials = oauth_flow.step2_exchange(code)
+    except FlowExchangeError:
+        return __json_response('Failed to upgrade the authorization code.', 401)
+
+    # Get access token
+    access_token = credentials.access_token
+    url = ('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=%s' % access_token)
+
+    # Send request to google to verify access_token
+    h = httplib2.Http()
+    result = json.loads(h.request(url, 'GET')[1])
+
+
+    # If result contains errors, return a 500
+    if result.get('error') is not None:
+        return __json_response(result.get('error'), 500)
+
+
+    # Now get the google plus id from the response
+    gplus_id = credentials.id_token['sub']
+    if result['user_id'] != gplus_id:
+        return __json_response("Token's user id doesn't match the given user id.", 401)
+
+
+    # Verify ClientID issued from google-plus
+    if result['issued_to'] != CLIENT_ID:
+        return __json_response("Token's client id doesn't match the app's client id.", 401)
+
+
+    # Check if user is already logged in
+    stored_credentials = login_session.get('credentials')
+    stored_gplus_id = login_session.get('gplus_id')
+    if stored_credentials is not None and gplus_id == stored_gplus_id:
+        return __json_response('Current user is already connected.', 200)
+
+
+    # If none of the above statements were correct, we have a valid access_token
+    login_session['credentials'] = credentials
+    login_session['gplus_id'] = gplus_id
+
+    # Fetch user info
+    userinfo_url = "https://www.googleapis.com/oauth2/v1/userinfo"
+    params = { 'access_token': credentials.access_token, '': 'json' }
+    answer = requests.get(userinfo_url, params = params)
+    data = json.loads(answer.text)
+
+    # Get relevant data for our app
+    login_session['username'] = data['name']
+    login_session['picture'] = data['picture']
+    login_session['email'] = data['email']
+
+    output = '<h1>Welcome, ' + login_session['username'] + '!</h1>'
+    flash('you are now logged in as %s' % login_session['username'])
+    return output
+    
+
+
+
+
+
+
 
 
 #JSON APIs to view Restaurant Information
