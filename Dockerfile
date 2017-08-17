@@ -9,14 +9,16 @@ RUN pip install --upgrade \
 	flask==0.9 \
 	Flask-Login==0.1.3
 
-# Setup database
+# Create database
 COPY database_setup.py database_setup.py
 RUN python database_setup.py
 
-# Menu Setup?
+# Seed database
 COPY lotsofmenus.py lotsofmenus.py
 RUN python lotsofmenus.py
 
 COPY . .
 ENTRYPOINT [ "python", "project.py" ]
+
+# ENTRYPOINT [ "./startup.sh" ]
 

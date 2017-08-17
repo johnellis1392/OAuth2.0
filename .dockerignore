@@ -1,0 +1,6 @@
+*.pyc
+client_id.txt
+client_secret.txt
+docker-compose.yaml
+Dockerfile
+
