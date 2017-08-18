@@ -137,7 +137,7 @@ def gconnect():
     output = '<h1>Welcome, ' + login_session['username'] + '!</h1>'
     flash('you are now logged in as %s' % login_session['username'])
     return output
-    
+
 
 
 # Endpoint for logging out
@@ -170,6 +170,66 @@ def gdisconnect():
         return __json_response('Failed to revoke token for given user.', 400)
 
 
+@app.route('/fbconnect', methods = ['POST'])
+def fbconnect():
+    if request.args.get('state') != login_session['state']:
+        return __json_response('Invalid State Parameter.', 401)
+    access_token = request.data
+
+    __json = json.loads(open('fb_client_secrets.json', 'r').read())['web']
+    app_id = __json['app_id']
+    app_secret = __json['app_secret']
+    url = 'https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id=%s&client_secret=%s&fb_exchange_token=%s' % (app_id, app_secret, access_token)
+
+    h = httplib2.Http()
+    result = h.request(url, 'GET')[1]
+
+    userinfo_url = 'https://graph.facebook.com/v2.2/me'
+    token = result.split('&')[0]
+
+    url = 'https://graph.facebook.com/v2.2/me?%s' % token
+    h = httplib2.Http()
+    result = h.request(url, 'GET')[1]
+
+    data = json.loads(result)
+    login_session['provider'] = 'facebook'
+    login_session['username'] = data['name']
+    login_session['email'] = data['email']
+    login_session['facebook_id'] = data['id']
+
+
+    # Get profile picture
+    url = 'https://graph.facebook.com/v2.2/me/picture?%s&redirect=0&height=200&width=200' % token
+    h = httplib2.Http()
+    result = h.request(url, 'GET')[1]
+    data = json.loads(result)
+    login_session['picture'] = data['data']['url']
+
+
+    user_id = getUserID(login_session['email'])
+    if not user_id:
+        user_id = createUser(login_session)
+    login_session['user_id'] = user_id
+
+
+    output = 'Welcome, ' + login_session['username'] + '!'
+    flash('you are now logged in as %s' % login_session['username'])
+    return output
+
+
+@app.route('/fbdisconnect')
+def fbdisconnect():
+    facebook_id = login_session['facebook_id']
+    url = 'https://graph.facebook.com/%s/permissions' % facebook_id
+    h = httplib2.Http()
+    result = h.request(url, 'DELETE')[1]
+
+    del login_session['username']
+    del login_session['email']
+    del login_session['picture']
+    del login_session['user_id']
+    del login_session['facebook_id']
+    return 'You have been logged out'
 
 
 
@@ -267,7 +327,7 @@ def showMenu(restaurant_id):
         return render_template('publicmenu.html', items = items, restaurant = restaurant)
     else:
         return render_template('menu.html', items = items, restaurant = restaurant)
-     
+
 
 
 #Create a new menu item
@@ -308,7 +368,7 @@ def editMenuItem(restaurant_id, menu_id):
       if request.form['course']:
           editedItem.course = request.form['course']
       session.add(editedItem)
-      session.commit() 
+      session.commit()
       flash('Menu Item Successfully Edited')
       return redirect(url_for('showMenu', restaurant_id = restaurant_id))
 
@@ -323,7 +383,7 @@ def deleteMenuItem(restaurant_id,menu_id):
         return redirect('/login')
 
     restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
-    itemToDelete = session.query(MenuItem).filter_by(id = menu_id).one() 
+    itemToDelete = session.query(MenuItem).filter_by(id = menu_id).one()
 
     if restaurant.user_id != login_session['user_id']:
         return __json_response('You are not authorized to perform this operation.', 401)
